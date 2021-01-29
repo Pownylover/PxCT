@@ -4,6 +4,7 @@
     using System.Collections.Generic;
     using System.Drawing;
     using System.IO;
+    using System.Linq;
     using System.Net.Http;
     using System.Threading.Tasks;
     using System.Windows;
@@ -15,16 +16,18 @@
     {
         #region Fields
 
-        private int[,] canvas;
+        private readonly List<Template> _templates = new();
+
+        private int[,] _canvas;
 
         #endregion
 
         public MainWindow()
         {
-            this.InitializeComponent();
+            InitializeComponent();
 
-            this.RefreshCommand = new DelegateCommand(o => this.ExecuteRefresh());
-            this.DataContext = this;
+            RefreshCommand = new DelegateCommand(o => ExecuteRefresh());
+            DataContext = this;
         }
 
         #region Properties
@@ -35,58 +38,98 @@
 
         #region Methods
 
-        private static Color GetColor(int colorCode)
+        private void DrawCanvas()
         {
-            return colorCode switch
+            var width = _canvas.GetUpperBound(0);
+            var height = _canvas.GetUpperBound(1);
+
+            var bmp = new Bitmap(width, height);
+            for (var x = 0; x < width; x++)
             {
-                0 => CanvasColor.White,
-                1 => CanvasColor.Mercury,
-                2 => CanvasColor.Gray,
-                3 => CanvasColor.MineShaft,
-                4 => CanvasColor.CarnationPink,
-                5 => CanvasColor.Red,
-                6 => CanvasColor.Tangerine,
-                7 => CanvasColor.CapePalliser,
-                8 => CanvasColor.Turbo,
-                9 => CanvasColor.Conifer,
-                10 => CanvasColor.Green,
-                11 => CanvasColor.RobinsEggBlue,
-                12 => CanvasColor.Lochmara,
-                13 => CanvasColor.Blue,
-                14 => CanvasColor.Lavender,
-                15 => CanvasColor.FreshEggplant,
-                _ => throw new NotImplementedException()
-            };
-        }
-
-        /// <summary>
-        /// </summary>
-        /// <remarks>Chunk IDs from top-left to bottom-right</remarks>
-        /// <param name="chunkId"></param>
-        private void AddChunk(int subChunkId, ICollection<int> colors)
-        {
-        }
-
-        private async void ExecuteRefresh()
-        {
-            // TODO: Determine needed chunk area
-            var chunkTL = new Point(0, 0);
-            var chunkBR = new Point(0, 0);
-
-            this.canvas = await this.GetCanvasAsync();
-
-            // DEBUG
-            var bmp = new Bitmap(960, 960);
-            for (var x = 0; x < this.canvas.GetUpperBound(0); x++)
-            {
-                for (var y = 0; y < this.canvas.GetUpperBound(1); y++)
+                for (var y = 0; y < height; y++)
                 {
-                    var color = GetColor(this.canvas[x, y]);
+                    var color = CanvasColor.ConvertIdToColor(_canvas[x, y]);
                     bmp.SetPixel(x, y, color);
                 }
             }
 
-            bmp.Save(@"D:\test.bmp");
+            // 448,448 of 0.0 chunk is 0:0
+
+            // 960 x 960
+
+            bmp.Save(@"D:\canvas.bmp");
+        }
+
+        private void DrawErrors()
+        {
+            var width = _templates.First().Pixels.GetUpperBound(0);
+            var height = _templates.First().Pixels.GetUpperBound(1);
+
+            var bmp = new Bitmap(width, height);
+            for (var x = 0; x < width; x++)
+            {
+                for (var y = 0; y < height; y++)
+                {
+                    var color = CanvasColor.ConvertIdToColor(_templates.First().Errors[x, y]);
+                    bmp.SetPixel(x, y, color);
+                }
+            }
+
+            // 960 x 960
+
+            bmp.Save(@"D:\errors.bmp");
+        }
+
+        private void DrawTemplate()
+        {
+            var width = _templates.First().Pixels.GetUpperBound(0);
+            var height = _templates.First().Pixels.GetUpperBound(1);
+
+            var bmp = new Bitmap(width, height);
+            for (var x = 0; x < width; x++)
+            {
+                for (var y = 0; y < height; y++)
+                {
+                    var color = CanvasColor.ConvertIdToColor(_templates.First().Pixels[x, y]);
+                    bmp.SetPixel(x, y, color);
+                }
+            }
+
+            // 960 x 960
+
+            bmp.Save(@"D:\template.bmp");
+        }
+
+        private async void ExecuteRefresh()
+        {
+            LoadTemplates();
+
+            // TODO: Determine needed chunk area
+            var chunkTL = new Point(0, 0);
+            var chunkBR = new Point(0, 0);
+
+            await LoadCanvasAsync();
+
+            // DEBUG
+            // DrawCanvas();
+
+            var test = _templates.First();
+
+            var offsetX = 448;
+            var offsetY = 448;
+
+            for (var x = 0; x < test.Pixels.GetUpperBound(0); x++)
+            {
+                for (var y = 0; y < test.Pixels.GetUpperBound(1); y++)
+                {
+                    var targetColorId = test.Pixels[x, y];
+                    var currentColorId = _canvas[x + test.Position.X + offsetX, y + test.Position.Y + offsetY];
+                    test.Errors[x, y] = (targetColorId == -1) || (targetColorId == currentColorId) ? -1 : 5;
+                }
+            }
+
+            DrawTemplate();
+            DrawErrors();
 
             // 2. check one pixel
 
@@ -99,9 +142,11 @@
             // 6. show damage/missing on image
 
             // 7. add refresh button
+
+            // 8 refresh only specific chunks
         }
 
-        private async Task<int[,]> GetCanvasAsync()
+        private async Task LoadCanvasAsync()
         {
             using var client = new HttpClient();
             var response = await client.GetStreamAsync("https://api.pixelcanvas.io/api/bigchunk/0.0.bmp");
@@ -113,10 +158,7 @@
 
             foreach (var b in bytes)
             {
-                if (b > 0)
-                {
-                    ;
-                }
+                if (b > 0) { ; }
 
                 var codeA = (b >> 4) & 15;
                 var codeB = b & 15;
@@ -147,14 +189,39 @@
                                 Console.WriteLine(e);
                                 throw;
                             }
-
-                            //GetColor(bmp, (horChunkId * 64) + x, (verChunkId * 64) + y, colorCodes[pixelIndex]);
                         }
                     }
                 }
             }
 
-            return bmp;
+            _canvas = bmp;
+        }
+
+        private void LoadTemplates()
+        {
+            var filename = @"templates\LittleFlutter_-182_359.png";
+            var filenameChunks = filename.Split('_');
+
+            var bmp = new Bitmap(filename);
+
+            var template = new Template
+            {
+                Filename = filename,
+                Pixels = new int[bmp.Width, bmp.Height],
+                Errors = new int[bmp.Width, bmp.Height],
+                Position = new Point(int.Parse(filenameChunks[1]), int.Parse(filenameChunks[2].Split('.')[0]))
+            };
+
+            for (var x = 0; x < bmp.Width; x++)
+            {
+                for (var y = 0; y < bmp.Height; y++)
+                {
+                    var px = bmp.GetPixel(x, y);
+                    template.Pixels[x, y] = px.ToColorId();
+                }
+            }
+
+            _templates.Add(template);
         }
 
         #endregion
