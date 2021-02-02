@@ -109,6 +109,12 @@
             throw new ArgumentException("Unknown color");
         }
 
+        public static Color ToGrayScale(this Color color)
+        {
+            var gamma = (int)((color.R * 0.2126) + (color.G * 0.7152) + (color.B * 0.0722));
+            return Color.FromArgb(gamma, gamma, gamma);
+        }
+
         #endregion
     }
 }

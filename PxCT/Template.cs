@@ -6,7 +6,7 @@
     {
         #region Properties
 
-        public int[,] Errors { get; set; }
+        public bool[,] Errors { get; set; }
 
         public string Filename { get; set; }
 
