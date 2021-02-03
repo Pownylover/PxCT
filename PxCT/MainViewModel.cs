@@ -2,55 +2,55 @@
 {
     using System;
     using System.Collections.Generic;
-    using System.ComponentModel;
+    using System.Collections.ObjectModel;
     using System.Drawing;
     using System.IO;
     using System.Linq;
     using System.Net.Http;
-    using System.Runtime.CompilerServices;
     using System.Threading.Tasks;
     using System.Windows;
     using System.Windows.Input;
-    using System.Windows.Interop;
     using System.Windows.Media;
-    using System.Windows.Media.Imaging;
     using Color = System.Drawing.Color;
     using Point = System.Drawing.Point;
 
-    internal class MainViewModel : INotifyPropertyChanged
+    internal class MainViewModel : BindableBase
     {
         #region Fields
 
-        private readonly List<Template> _templates = new();
-
-        private int[,] _canvas;
+        private Canvas _canvas;
 
         private ImageSource _compareImage;
+
+        private Template _selectedTemplate;
 
         #endregion
 
         public MainViewModel()
         {
-            RefreshCommand = new DelegateCommand(o => ExecuteRefresh());
+            // RefreshCommand = new DelegateCommand(o => ExecuteRefresh());
+            Initialize();
         }
-
-        #region Delegates & Events
-
-        public event PropertyChangedEventHandler PropertyChanged;
-
-        #endregion
 
         #region Properties
 
         public ImageSource CompareImage
         {
             get => _compareImage;
+            private set => SetProperty(value, ref _compareImage);
+        }
+
+        public Template SelectedTemplate
+        {
+            get => _selectedTemplate;
             set
             {
-                _compareImage = value;
-                OnPropertyChanged();
+                SetProperty(value, ref _selectedTemplate);
+                DrawComparison();
             }
         }
+
+        public ObservableCollection<Template> Templates { get; } = new();
 
         #region Commands
 
@@ -62,203 +62,210 @@
 
         #region Methods
 
-        protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
-
-        #region Commands
-
-        private async void ExecuteRefresh()
-        {
-            LoadTemplates();
-
-            // TODO: Determine needed chunk area
-            //var chunkTL = new Point(0, 0);
-            //var chunkBR = new Point(0, 0);
-
-            await LoadCanvasAsync();
-
-            // DEBUG
-            // DrawCanvas();
-
-            var test = _templates.First();
-
-            var offsetX = 448;
-            var offsetY = 448;
-
-            MarkErrors(test, offsetX, offsetY);
-
-            DrawTemplate();
-
-            // 2. check one pixel
-
-            // 3. load template folder
-
-            // 4. compare one image to canvas
-
-            // 5. grey scale image
-
-            // 6. show damage/missing on image
-
-            // 7. add refresh button
-
-            // 8 refresh only specific chunks
-        }
-
-        #endregion
-
+        [Obsolete("Used only for debugging")]
         private void DrawCanvas()
         {
-            var width = _canvas.GetUpperBound(0);
-            var height = _canvas.GetUpperBound(1);
+            var width = _canvas.Pixels.GetUpperBound(0) + 1;
+            var height = _canvas.Pixels.GetUpperBound(1) + 1;
 
             var bmp = new Bitmap(width, height);
             for (var x = 0; x < width; x++)
             {
                 for (var y = 0; y < height; y++)
                 {
-                    var color = CanvasColor.ConvertIdToColor(_canvas[x, y]);
+                    var color = CanvasColor.ConvertIdToColor(_canvas.Pixels[x, y]);
                     bmp.SetPixel(x, y, color);
                 }
             }
 
-            // 448,448 of 0.0 chunk is 0:0
-
-            // 960 x 960
-
             bmp.Save(@"D:\canvas.bmp");
         }
 
-        //private void DrawErrors(Bitmap bmp)
-        //{
-        //    var width = _templates.First().Pixels.GetUpperBound(0);
-        //    var height = _templates.First().Pixels.GetUpperBound(1);
-
-        //    for (var x = (width / 2) + 1; x < width; x++)
-        //    {
-        //        for (var y = 0; y < height; y++)
-        //        {
-        //            bmp.SetPixel(x, y, color);
-        //        }
-        //    }
-
-        //    // 960 x 960
-
-        //    bmp.Save(@"D:\errors.bmp");
-        //}
-
-        private void DrawTemplate()
+        /// <summary>Draws the template image next to the error highlighted, gray scaled image.</summary>
+        private void DrawComparison()
         {
-            var width = _templates.First().Pixels.GetUpperBound(0) + 1;
-            var height = _templates.First().Pixels.GetUpperBound(1) + 1;
+            var width = SelectedTemplate.Pixels.GetUpperBound(0) + 1;
+            var height = SelectedTemplate.Pixels.GetUpperBound(1) + 1;
             var bmp = new Bitmap(width * 2, height);
 
             for (var x = 0; x < width; x++)
             {
                 for (var y = 0; y < height; y++)
                 {
-                    var color = CanvasColor.ConvertIdToColor(_templates.First().Pixels[x, y]);
+                    var color = CanvasColor.ConvertIdToColor(SelectedTemplate.Pixels[x, y]);
                     bmp.SetPixel(x, y, color);
 
-                    var colorError = _templates.First().Errors[x, y] ? Color.Red : color.ToGrayScale();
+                    var colorError = SelectedTemplate.Errors[x, y] ? Color.Red : color.ToGrayScale();
                     bmp.SetPixel(x + width, y, colorError);
                 }
             }
 
-            CompareImage = Imaging.CreateBitmapSourceFromHBitmap(bmp.GetHbitmap(), IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+            CompareImage = bmp.ToImageSource();
+        }
+
+        private void FindTemplateErrors()
+        {
+            foreach (var template in Templates) { MarkErrors(template); }
+        }
+
+        private async void Initialize()
+        {
+            LoadTemplates();
+            //await LoadCanvasAsync();
+            //FindTemplateErrors();
         }
 
         private async Task LoadCanvasAsync()
         {
-            using var client = new HttpClient();
-            var response = await client.GetStreamAsync("https://api.pixelcanvas.io/api/bigchunk/0.0.bmp");
+            // todo: only load chunks containing templates
+            // todo: currently a square area is loaded instead
 
-            using var sr = new BinaryReader(response);
-            var bytes = sr.ReadBytes(460800);
+            // constants
+            const int bigChunkSize = 960;
+            const int bigChunkPixels = bigChunkSize * bigChunkSize;
+            const int zeroOffset = 448;
+            const string chunkBaseUrl = "https://api.pixelcanvas.io/api/bigchunk";
+            const int smallChunkSize = 64;
+            const int smallChunkPixels = smallChunkSize * smallChunkSize;
+            const int smallChunksInBigChunk = 15;
 
-            var colorCodes = new List<int>();
+            // calculate needed chunks
+            var topLeft = new Point(0, 0);
+            var bottomRight = new Point(0, 0);
 
-            foreach (var b in bytes)
+            foreach (var template in Templates)
             {
-                if (b > 0) { ; }
-
-                var codeA = (b >> 4) & 15;
-                var codeB = b & 15;
-                colorCodes.Add(codeA);
-                colorCodes.Add(codeB);
+                topLeft.X = Math.Min(topLeft.X, template.Position.X);
+                topLeft.Y = Math.Min(topLeft.Y, template.Position.Y);
+                bottomRight.X = Math.Max(bottomRight.X, template.Position.X + template.Pixels.GetUpperBound(0));
+                bottomRight.Y = Math.Max(bottomRight.Y, template.Position.Y + template.Pixels.GetUpperBound(1));
             }
 
-            var width = 960;
-            var height = 960;
+            var chunkLeft = (topLeft.X - zeroOffset) / bigChunkSize;
+            var chunkRight = (bottomRight.X + zeroOffset) / bigChunkSize;
+            var chunkTop = (topLeft.Y - zeroOffset) / bigChunkSize;
+            var chunkBottom = (bottomRight.Y + zeroOffset) / bigChunkSize;
 
-            var bmp = new int[width, height];
+            var offsetX = chunkLeft * -960;
+            var offsetY = chunkTop * -960;
 
-            for (var horChunkId = 0; horChunkId < 15; horChunkId++)
+            var canvas = new Canvas
             {
-                for (var verChunkId = 0; verChunkId < 15; verChunkId++)
+                Pixels = new int[bigChunkSize * (chunkLeft - chunkRight - 1) * -1, bigChunkSize * (chunkTop - chunkBottom - 1) * -1],
+                ChunkOffset = new Point(offsetX, offsetY)
+            };
+
+            using var client = new HttpClient();
+
+            // The canvas is created from big chunks
+            for (var bigChunkX = chunkLeft; bigChunkX <= chunkRight; bigChunkX++)
+            {
+                for (var bigChunkY = chunkTop; bigChunkY <= chunkBottom; bigChunkY++)
                 {
-                    for (var x = 0; x < 64; x++)
+                    // the coordinates represent the small chunk positions
+                    var chunkUrl = $"{chunkBaseUrl}/{bigChunkX * smallChunksInBigChunk}.{bigChunkY * smallChunksInBigChunk}.bmp";
+                    var response = await client.GetStreamAsync(chunkUrl);
+
+                    using var sr = new BinaryReader(response);
+                    var bytes = sr.ReadBytes(bigChunkPixels / 2);
+
+                    // two color codes are encoded in one byte, each four bit long
+                    var colorCodes = new List<int>();
+                    foreach (var b in bytes)
                     {
-                        for (var y = 0; y < 64; y++)
+                        var codeA = (b >> 4) & 15;
+                        var codeB = b & 15;
+                        colorCodes.Add(codeA);
+                        colorCodes.Add(codeB);
+                    }
+
+                    // big chunks contain 15x15 small chunks
+                    for (var smallChunkX = 0; smallChunkX < smallChunksInBigChunk; smallChunkX++)
+                    {
+                        for (var smallChunkY = 0; smallChunkY < smallChunksInBigChunk; smallChunkY++)
                         {
-                            try
+                            // small chunks contain 64x64 pixels
+                            for (var x = 0; x < smallChunkSize; x++)
                             {
-                                var pixelIndex = ((horChunkId + (verChunkId * 15)) * 4096) + x + (y * 64);
-                                bmp[(horChunkId * 64) + x, (verChunkId * 64) + y] = colorCodes[pixelIndex];
-                            }
-                            catch (Exception e)
-                            {
-                                Console.WriteLine(e);
-                                throw;
+                                for (var y = 0; y < smallChunkSize; y++)
+                                {
+                                    var pixelIndex = ((smallChunkX + (smallChunkY * smallChunksInBigChunk)) * smallChunkPixels) + x + (y * smallChunkSize);
+                                    var canvasX = (smallChunkX * smallChunkSize) + x + (bigChunkX * bigChunkSize) + canvas.ChunkOffset.X;
+                                    var canvasY = (smallChunkY * smallChunkSize) + y + (bigChunkY * bigChunkSize) + canvas.ChunkOffset.Y;
+                                    canvas.Pixels[canvasX, canvasY] = colorCodes[pixelIndex];
+                                }
                             }
                         }
                     }
                 }
             }
 
-            _canvas = bmp;
+            _canvas = canvas;
         }
 
         private void LoadTemplates()
         {
-            var filename = @"templates\LittleFlutter_-182_359.png";
-            var filenameChunks = filename.Split('_');
+            var templateFiles = Directory.GetFiles("templates", "*.png");
+            Templates.Clear();
 
-            var bmp = new Bitmap(filename);
-
-            var template = new Template
+            foreach (var templateFile in templateFiles)
             {
-                Filename = filename,
-                Pixels = new int[bmp.Width, bmp.Height],
-                Errors = new bool[bmp.Width, bmp.Height],
-                Position = new Point(int.Parse(filenameChunks[1]), int.Parse(filenameChunks[2].Split('.')[0]))
-            };
-
-            for (var x = 0; x < bmp.Width; x++)
-            {
-                for (var y = 0; y < bmp.Height; y++)
+                try
                 {
-                    var px = bmp.GetPixel(x, y);
-                    template.Pixels[x, y] = px.ToColorId();
+                    var filenameChunks = templateFile.Split('_');
+                    if (filenameChunks.Length != 3) { throw new ArgumentException("Invalid Filename"); }
+
+                    var bmp = new Bitmap(templateFile);
+
+                    var template = new Template
+                    {
+                        Errors = new bool[bmp.Width, bmp.Height],
+                        Filename = templateFile,
+                        Image = bmp.ToImageSource(),
+                        Name = filenameChunks[0].Split('\\').Last(),
+                        Pixels = new int[bmp.Width, bmp.Height],
+                        PixelCount = bmp.Width * bmp.Height,
+                        Position = new Point(int.Parse(filenameChunks[1]), int.Parse(filenameChunks[2].Split('.')[0]))
+                    };
+
+                    for (var x = 0; x < bmp.Width; x++)
+                    {
+                        for (var y = 0; y < bmp.Height; y++)
+                        {
+                            var px = bmp.GetPixel(x, y);
+                            template.Pixels[x, y] = px.ToColorId();
+                        }
+                    }
+
+                    Templates.Add(template);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Template {templateFile} could not be imported.\r\n\r\n{ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
-
-            _templates.Add(template);
         }
 
-        private void MarkErrors(Template test, int offsetX, int offsetY)
+        private void MarkErrors(Template template)
         {
-            for (var x = 0; x < test.Pixels.GetUpperBound(0); x++)
+            // base offset from 0:0 is 448 pixels in both directions
+            var zeroOffsetX = 448 + _canvas.ChunkOffset.X;
+            var zeroOffsetY = 448 + _canvas.ChunkOffset.Y;
+            var errorCount = 0;
+
+            for (var x = 0; x < template.Pixels.GetUpperBound(0); x++)
             {
-                for (var y = 0; y < test.Pixels.GetUpperBound(1); y++)
+                for (var y = 0; y < template.Pixels.GetUpperBound(1); y++)
                 {
-                    var targetColorId = test.Pixels[x, y];
-                    var currentColorId = _canvas[x + test.Position.X + offsetX, y + test.Position.Y + offsetY];
+                    var targetColorId = template.Pixels[x, y];
+                    var currentColorId = _canvas.Pixels[x + template.Position.X + zeroOffsetX, y + template.Position.Y + zeroOffsetY];
                     var hasError = (targetColorId > -1) && (targetColorId != currentColorId);
-                    test.Errors[x, y] = hasError;
+                    template.Errors[x, y] = hasError;
+                    errorCount += hasError ? 1 : 0;
                 }
             }
+
+            template.ErrorCount = errorCount;
         }
 
         #endregion
