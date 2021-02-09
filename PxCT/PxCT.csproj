@@ -17,10 +17,14 @@
   <ItemGroup>
     <None Remove="logo.ico" />
     <None Remove="PxCT.sln.DotSettings" />
+    <None Remove="Resources\image_refresh.png" />
+    <None Remove="Resources\information.png" />
   </ItemGroup>
 
   <ItemGroup>
     <Resource Include="logo.ico" />
+    <Resource Include="Resources\image_refresh.png" />
+    <Resource Include="Resources\information.png" />
   </ItemGroup>
 
   <ItemGroup>
