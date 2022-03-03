@@ -1,9 +1,9 @@
-﻿namespace PxCT
-{
-    using System.Windows;
-    using System.Windows.Input;
-    using System.Windows.Media;
+﻿using System.Windows;
+using System.Windows.Input;
+using System.Windows.Media;
 
+namespace PxCT
+{
     /// <summary>Interaction logic for MainWindow.xaml</summary>
     public partial class MainWindow
     {
