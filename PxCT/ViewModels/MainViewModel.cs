@@ -230,10 +230,10 @@ namespace PxCT
                 var bottomRight = new Point(topLeft.X + SelectedTemplate.Area.Width, topLeft.Y + SelectedTemplate.Area.Height);
 
                 // convert to big chunk coordinates
-                topLeft.X = (int) Math.Floor((topLeft.X + ZeroOffset) / BigChunkSizeD);
-                topLeft.Y = (int) Math.Floor((topLeft.Y + ZeroOffset) / BigChunkSizeD);
-                bottomRight.X = (int) Math.Floor((bottomRight.X + ZeroOffset) / BigChunkSizeD);
-                bottomRight.Y = (int) Math.Floor((bottomRight.Y + ZeroOffset) / BigChunkSizeD);
+                topLeft.X = (int)Math.Floor((topLeft.X + ZeroOffset) / BigChunkSizeD);
+                topLeft.Y = (int)Math.Floor((topLeft.Y + ZeroOffset) / BigChunkSizeD);
+                bottomRight.X = (int)Math.Floor((bottomRight.X + ZeroOffset) / BigChunkSizeD);
+                bottomRight.Y = (int)Math.Floor((bottomRight.Y + ZeroOffset) / BigChunkSizeD);
 
                 // load big chunks
                 for (var x = topLeft.X; x <= bottomRight.X; x++)
@@ -378,10 +378,10 @@ namespace PxCT
                 bottomRight.Y = Math.Max(bottomRight.Y, template.Area.Y + template.Pixels.GetUpperBound(1));
             }
 
-            var chunkTopLeftX = (int) Math.Floor((topLeft.X + ZeroOffset) / BigChunkSizeD);
-            var chunkTopLeftY = (int) Math.Floor((topLeft.Y + ZeroOffset) / BigChunkSizeD);
-            var chunkBottomRightX = (int) Math.Floor((bottomRight.X + ZeroOffset) / BigChunkSizeD);
-            var chunkBottomRightY = (int) Math.Floor((bottomRight.Y + ZeroOffset) / BigChunkSizeD);
+            var chunkTopLeftX = (int)Math.Floor((topLeft.X + ZeroOffset) / BigChunkSizeD);
+            var chunkTopLeftY = (int)Math.Floor((topLeft.Y + ZeroOffset) / BigChunkSizeD);
+            var chunkBottomRightX = (int)Math.Floor((bottomRight.X + ZeroOffset) / BigChunkSizeD);
+            var chunkBottomRightY = (int)Math.Floor((bottomRight.Y + ZeroOffset) / BigChunkSizeD);
 
             var chunkTopLeft = new Point(chunkTopLeftX, chunkTopLeftY);
             var chunkBottomRight = new Point(chunkBottomRightX, chunkBottomRightY);
@@ -470,7 +470,7 @@ namespace PxCT
                     var hasError = (targetColorId > -1) && (targetColorId != currentColorId);
                     template.Errors[x, y] = hasError;
 
-                    pixelCount += currentColorId != -1 ? 1 : 0;
+                    pixelCount += targetColorId != -1 ? 1 : 0;
                     errorCount += hasError ? 1 : 0;
                 }
             }

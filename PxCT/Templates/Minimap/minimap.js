@@ -507,7 +507,7 @@ function findCoor(){
   // Loop and find the element with the right style attributes
   Array.prototype.forEach.call(elms, function(elm) {
     var style = elm.style.cssText;
-    if (style == "position: absolute; left: 1em; bottom: 1em;"){
+    if (style == "position: fixed; left: 1em; bottom: 1em;"){
       console.log("Found It!");
       coorDOM = elm.firstChild;
       console.log(coorDOM.innerHTML);
